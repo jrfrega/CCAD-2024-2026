@@ -1,0 +1,920 @@
+---
+title: "Previsão de demanda"
+author: "Prof. Frega"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(sqldf)
+library(openxlsx)
+library(magrittr)
+library(kableExtra)
+library(knitr)
+options(knitr.kable.NA = '')
+mkable = function(x, caption = NULL, bg = "#f0f0f0") {
+  x %>% knitr::kable(caption = caption) %>% row_spec(seq(1,nrow(x),2), background=bg) %>% 
+  kable_styling(full_width=FALSE) %>% kableExtra::kable_classic_2()
+}
+```
+
+<a href="#Noturno SAOB10" class="skip-link">Skip to main content</a>
+
+
+```{r leintegralizacao}
+# LE O ARQUIVO DE INTEGRALIZACAO
+fintegralizacao = "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/integralização-2024-10-18T11_01_02.xlsx"
+# system(paste0("open ", fintegralizacao))
+read.xlsx(fintegralizacao) -> dfIntegralizacao
+
+#sqldf("select * from dfIntegralizacao where Nome = 'BEATRIZ ARMSTRONG DUENHAS'")
+```
+
+```{r selecionaativos}
+# SELECIONA OS ALUNOS ATIVOS
+#sqldf("select distinct `Situação.do.aluno` from dfIntegralizacao")
+sqldf("select `Situação.do.aluno`, count(distinct(Matrícula)) as Contagem from dfIntegralizacao group by 1") %>% mkable
+dfAtivos = sqldf("select * from dfIntegralizacao where `Situação.do.aluno` = 'Registro ativo'")
+dfTrancados = sqldf("select * from dfIntegralizacao where `Situação.do.aluno` = 'Trancamento'")
+```
+
+```{r identificacargahoraria}
+sqldf("select Matrícula, Nome, Turno, sum(CH) as CHNãoVencida from dfAtivos where Vencida = 'Não' group by 1, 2, 3 order by 4 asc") -> dfCHNaoVencida
+sqldf("select Matrícula, Nome, sum(CH) as CHObrigatóriaNãoVencida from dfAtivos where Vencida = 'Não' and Natureza = 'Obrigatória' group by Matrícula, Nome, Turno order by CHObrigatóriaNãoVencida asc") -> dfCHObrigatoriaNaoVencida
+
+sqldf("select dfCHObrigatoriaNaoVencida.*, dfCHNaoVencida.Turno, CHNãoVencida from dfCHNaoVencida, dfCHObrigatoriaNaoVencida where dfCHNaoVencida.Matrícula = dfCHObrigatoriaNaoVencida.Matrícula order by CHNãoVencida, CHObrigatóriaNãoVencida") -> dfCarga
+
+sqldf("select dfCarga.*, `Disciplina(s)`, Período, `Período.do.Aluno`, CH from dfCarga, dfIntegralizacao where dfCarga.Matrícula = dfIntegralizacao.Matrícula and dfIntegralizacao.Vencida = 'Não' order by dfCarga.CHNãoVencida") -> dfCargaId
+
+sqldf("select `Disciplina(s)`, Período, Turno, `Período.do.Aluno`, count(*) from dfCargaId group by 1, 2, 3, 4 order by 4 desc, 3 asc, 5 desc") -> dfResult
+
+#dfResult[which(dfResult$`Disciplina(s)`=="SAOB10"),]
+
+```
+
+```{r lePPC}
+# Le o PPC (TODAS AS DISCIPLINAS)
+read.xlsx("/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/disciplinas ppc-2024-10-17T18_06_53.xlsx") -> dfPPC
+sqldf("select * from dfPPC where Vigência <> 'Inativo'") -> dfPPC
+#sqldf("select distinct(concat(`Código.da.disciplina`, ' - ', `Disciplina`)) from dfPPC order by 1") %>%  apply(1, cat, sep = '\n')
+
+```
+
+
+```{r leMatriculas}
+# LE AS SOLICITACOES DE MATRICULA
+# NAO FUNCIONA PORQUE SÓ PEGA O QUE OS ALUNOS SOLICITARAM
+fname = "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/solicitações matrícula-2024-10-24T10_48_16.xlsx"
+read.xlsx(fname) -> dfMatriculas
+
+# LE AS TURMAS (ARQUIVO COM OS ALUNOS EFETIVAMENTE MATRICULADOS)
+fname = "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/turmas-2024-10-24T11_49_40.xlsx"
+read.xlsx(fname) -> dfTurmas
+
+
+#sqldf('select Matrícula, Nome, Código, Disciplina, Turma, Posição from dfMatriculas where status = "Matriculado"')
+sqldf('select Código, Disciplina, Turma, count(*) as `N.Matriculados` from dfMatriculas where status = "Matriculado" group by 1, 2, 3') -> dfMatriculados
+dfMatriculados$TurmaResumo = dfMatriculados$Turma
+dfMatriculados$TurmaResumo[((dfMatriculados$Turma %>% substring(1, 2)) == "MN")] <- "NM"
+#unique(dfMatriculados$TurmaResumo)
+dfMatriculados$Turno = "Matutino"
+dfMatriculados$Turno[dfMatriculados$TurmaResumo %>% substring(1, 1) == "N"] <- "Noturno"
+
+sqldf('select Código, Disciplina, Turno, sum(`N.Matriculados`) as `N.Matriculados` from dfMatriculados group by 1, 2, 3') -> dfMatriculados
+
+#colnames(dfTurmas)
+dfTurmas$TurmaResumo = dfTurmas$`Nome.turma`
+dfTurmas$TurmaResumo[((dfTurmas$TurmaResumo %>% substring(1, 2)) == "MN")] <- "NM"
+#unique(dfTurmas$TurmaResumo)
+dfTurmas$Turno = "Matutino"
+dfTurmas$Turno[dfTurmas$TurmaResumo %>% substring(1, 1) == "N"] <- "Noturno"
+
+sqldf("select Turno, `Código.disciplina`, `Nome.disciplina`, sum(`Total.alunos`) as `Total.alunos` from dfTurmas group by 1, 2, 3") -> dfMatriculados
+sqldf("select distinct Status, count(*) from dfMatriculas group by 1")
+sqldf("select Turma, Código, count(*) from dfMatriculas where Status = 'Matriculado' and Código = 'SAOB10' group by 1, 2")
+sqldf("select * from dfMatriculas where Status = 'Matriculado' and Código = 'HP228' group by 1")
+sqldf("select `Código.disciplina`, `Turno`, `Nome.turma`, `Total.alunos` from dfTurmas")
+
+
+```
+
+```{r pegaMatriculadosNoHistorico, eval=FALSE, include=FALSE}
+read.xlsx("/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/histórico escolar-2024-10-18T08_29_27.xlsx") -> dfDummy
+#dfDummy$Docente[dfDummy$Ano >= 2022] %>% unique %>% sort
+#dfDummy$Ano >= 2022
+'select Código as `Código.disciplina`, `Nome.da.Turma` as turma, count(*) as matriculados from dfDummy where Status = "Matriculado" group by Código, `Nome.da.Turma`' %>% sqldf -> dfDummy 
+
+'select `Código.disciplina`, 
+   CASE WHEN turma = "MN"
+   THEN "Matutino"
+   ELSE
+   CASE WHEN turma = "NM"
+   THEN "Noturno"
+   ELSE
+   CASE WHEN substring(turma, 1, 1)="M"
+   THEN "Matutino"
+   ELSE "Noturno"
+   END
+   END
+   END as Turno, 
+   sum(matriculados) as `Total.alunos`
+from dfDummy
+group by 1, 2
+order by 2, 1' %>% sqldf -> dfDummy
+#dfDummy$Status %>% unique
+```
+
+```{r calculaNecessidade}
+dfDummy -> dfMatriculados
+#paste0('sqldf("\n', "select \n", paste("`", colnames(dfCargaId), "`", collapse = ", ", sep = ""), "\nfrom dfCargaId\nwhere\ngroup by\norder by\n", '")') %>% cat
+
+# SELECIONA A NECESSIDADE A PARTIR DA CARGA POR ALUNO OBTIDA A PARTIR
+# DO QUE AINDA NAO FOI INTEGRALIZADO
+sqldf("
+select 
+a.`Turno`, a.`Disciplina(s)`, a.`Período`,
+count(*) as `Demanda.Reprimida`
+from dfCargaId a
+where a.Período <= `Período.do.aluno` 
+group by 
+a.`Turno`, a.`Disciplina(s)`, a.`Período`
+order by a.`Turno`, count(*) desc, a.`Período`
+") -> dfNecessidade0
+
+# SELECIONA A NECESSIDADE A PARTIR DA CARGA POR ALUNO OBTIDA A PARTIR
+# DO QUE AINDA NAO FOI INTEGRALIZADO (PREVISAO PARA O PROXIMO SEMESTRE)
+sqldf("
+select 
+a.`Turno`, a.`Disciplina(s)`, a.`Período`,
+count(*) as `Demanda.Próximo.Semestre`
+from dfCargaId a
+where a.Período = (`Período.do.aluno`+1)
+group by 
+a.`Turno`, a.`Disciplina(s)`, a.`Período`
+order by a.`Turno`, count(*) desc, a.`Período`
+") -> dfNecessidade1
+
+#which(is.na(dfNecessidade$Demanda.Próximo.Semestre))
+
+# JUNTA DEMANDA REPRIMIDA E NECESSIDADE FUTURA NO MESMO DATAFRAME
+sqldf("
+select 
+a.`Turno`, a.`Disciplina(s)`, a.`Período`,
+`Demanda.Reprimida`, IFNULL(`Demanda.Próximo.Semestre`, 0) as `Demanda.Próximo.Semestre`, `Demanda.Reprimida`+IFNULL(`Demanda.Próximo.Semestre`, 0) as `Demanda.Total`
+from dfNecessidade0 a outer left join dfNecessidade1 b
+on a.Período = b.Período and
+a.`Turno` = b.`Turno` and
+a.`Disciplina(s)` = b.`Disciplina(s)`
+order by a.`Turno`, `Demanda.Total` desc, a.`Período`
+") -> dfNecessidade
+
+
+
+# COLOCA O TURNO NO PPC
+dfPPC$Turno = "Matutino"
+dfPPC$Turno[((dfPPC$`Curso.-.Nome.Versão` %>% substring(1, 2)) == 60) %>% which] = "Noturno"
+
+dfPPC$Vigência %>% unique
+# CALCULA A DEMANDA A PARTIR DA NECESSIDADE JUNTANDO COM OS DADOS DO PPC
+sqldf("
+select distinct
+a.`Turno`, a.`Disciplina(s)`, b.Disciplina, a.`Período`, a.`Demanda.Reprimida`, `Demanda.Próximo.Semestre`, `Demanda.Total`
+from dfNecessidade a left outer join dfPPC b
+on a.`Disciplina(s)` = b.`Código.da.disciplina` and
+a.Turno = b.Turno
+order by a.`Turno`, `Demanda.Reprimida` desc, a.`Período`
+") -> dfOferta
+
+is.na(dfOferta$Disciplina) %>% which -> w
+for(i in w) {
+  tk = dfOferta$`Disciplina(s)`[i]
+  tk = strsplit(tk, split = " OU ") %>% unlist
+  nomes = NULL
+  for (j in 1:length(tk)) {
+    nomes = c(nomes, sqldf(paste0("select Disciplina from dfPPC where `Código.da.disciplina` = '", tk[j], "'"))[1,1])
+  }
+  paste(nomes, collapse = " / ") -> .nm
+  dfOferta$Disciplina[i] = .nm
+}
+
+# JUNTA OS DADOS DE NECESSIDADE COM OS ALUNOS MATRICULADOS NAS TURMAS
+# E SEPARA POR TURNOS
+sqldf("select a.*, b.`Total.alunos` as Matriculados from dfOferta a left join dfMatriculados b on a.Turno = b.Turno and a.`Disciplina(s)` = b.`Código.disciplina`") -> dfOfertaComMatriculados
+
+dfOfertaComMatriculados$Entrantes = NA
+w <- which(((dfOfertaComMatriculados$`Disciplina(s)` %>% substring(1, 4)) == "SAOB" | (dfOfertaComMatriculados$`Disciplina(s)`) == "HSS101") & dfOfertaComMatriculados$Período == 1)
+dfOfertaComMatriculados$Entrantes[w] = 60
+```
+
+```{r escreveXLSX}
+fname = "/Users/jfrega/Downloads/2025-2-Necessidade-Oferta-Disciplinas.xlsx"
+createWorkbook() -> wb
+openxlsx::addWorksheet(wb, "Matutino")
+openxlsx::setColWidths(wb, "Matutino", widths = "auto", cols = 1:ncol(dfOfertaComMatriculados))
+openxlsx::addWorksheet(wb, "Noturno")
+openxlsx::setColWidths(wb, "Noturno", widths = "auto", cols = 1:ncol(dfOfertaComMatriculados))
+openxlsx::writeData(wb, "Matutino", dfOfertaComMatriculados[dfOfertaComMatriculados$Turno=="Matutino", ])
+openxlsx::writeData(wb, "Noturno", dfOfertaComMatriculados[dfOfertaComMatriculados$Turno=="Noturno", ])
+nr = nrow(dfOfertaComMatriculados[dfOfertaComMatriculados$Turno=="Matutino", ])
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(E2:E", nr+1, ")"), startRow = nr+3, startCol = 5)
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(F2:F", nr+1, ")"), startRow = nr+3, startCol = 6)
+nr = nrow(dfOfertaComMatriculados[dfOfertaComMatriculados$Turno=="Noturno", ])
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(E2:E", nr+1, ")"), startRow = nr+3, startCol = 5)
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(F2:F", nr+1, ")"), startRow = nr+3, startCol = 6)
+saveWorkbook(wb, fname, overwrite = TRUE)
+#write.xlsx(dfOferta, fname, overwrite = TRUE)
+#system(paste0("open ", fname))
+```
+
+
+
+
+
+
+
+
+```{r separaCodigosUnicos}
+colnames(dfPPC)
+dfPPC$`Curso.-.Nome.Versão` %>% unique
+
+sqldf('select `Código.da.disciplina`, Adaptação, Correspondência, Turno, Vigência from dfPPC where `Curso.-.Nome.Versão` in (
+"60A - 2007 - Administração - Noturno", 
+"61A - 2007 - Administração - Matutino", 
+"60A - 2007A - Administração - Noturno", 
+"61A - 2007A - Administração - Matutino", 
+"60A - 2023 - Administração" , 
+"61A - 2023 - Administração" 
+)') -> dfCorrespondencia
+
+dfCorrespondencia$Adaptação %>% strsplit(" - ")  %>% lapply(function(x) x[1]) %>% unlist -> dfCorrespondencia$Adaptação
+dfCorrespondencia$Correspondência %>% strsplit(" - ")  %>% lapply(function(x) x[1]) %>% unlist -> dfCorrespondencia$Correspondência
+
+sqldf("
+select `Código.da.disciplina` as cod, Turno, Vigência from dfCorrespondencia
+union
+select Adaptação as cod, Turno, Vigência from dfCorrespondencia where Adaptação <> 0
+union
+select Correspondência as cod, Turno, Vigência from dfCorrespondencia where Correspondência <> 0
+
+order by cod") -> dfTemp
+dfTemp$CodUnico = 0
+i = 10
+CodUnico = 0
+dfCorrespondencia$CodUnico = 0
+for(i in 1:nrow(dfTemp)) {
+  if(dfTemp$CodUnico[i]==0) {
+    CodUnico = CodUnico + 1
+    dfTemp$CodUnico[i] = CodUnico
+  }
+  which(dfCorrespondencia[,1]==dfTemp$cod[i] | dfCorrespondencia[,2]==dfTemp$cod[i] | dfCorrespondencia[,3]==dfTemp$cod[i]) -> w
+  if(length(w)>0) { 
+    for(j in w) {
+      if(dfCorrespondencia$CodUnico[j]==0) {
+        dfCorrespondencia$CodUnico[j] = i
+      }
+    }
+  }
+}
+
+sqldf("select * from dfCorrespondencia where `Código.da.disciplina` in ('SAOB04', 'SA053', 'SAOB27')")
+sqldf("select distinct a.Vigência, a.Turno, a.`Código.da.disciplina`, a.`CodUnico`, b.Disciplina from dfCorrespondencia a, dfPPC b where a. `Código.da.disciplina` = b.`Código.da.disciplina` order by 4, 1, 2, 3") -> dfCorrespondenciaX
+dfCorrespondenciaX$Código.da.disciplina %>% unique
+```
+```{r agregaAdaptacoes}
+nrow(dfOfertaComMatriculados) -> n
+sqldf("select Turno, CodUnico, GROUP_CONCAT(distinct `Código.da.disciplina`) as CodDisciplina, GROUP_CONCAT(distinct `Disciplina`) as Disciplina from dfCorrespondenciaX group by 1, 2") -> df1
+sqldf("select b.`Código.da.Disciplina`,  a.* from df1 a, dfCorrespondenciaX b where a.CodUnico = b.CodUnico and a.Turno = b.Turno") -> df2
+dfOfertaComMatriculados$CodDisciplinas = NA
+dfOfertaComMatriculados$Disciplinas = NA
+dfOfertaComMatriculados$CodUnico = NA
+for (i in 1:n) {
+  s = dfOfertaComMatriculados$`Disciplina(s)`[i]
+  strsplit(s, " OU ") %>% unlist -> .s
+  if(length(.s)>1) print(.s)
+  ..s = NULL
+  ...s = NULL
+  CodUnico = NULL
+  for(j in 1:length(.s)) {
+    w = which(df2$Código.da.disciplina == .s[j])
+    if(length(w)>0) {
+      ..s = c(..s, df2$CodDisciplina[w[1]])
+      ...s = c(...s, df2$Disciplina[w[1]])
+      CodUnico = df2$CodUnico[w[1]]
+    }
+  }
+  dfOfertaComMatriculados$CodDisciplinas[i] = paste(..s, collapse = "/")
+  dfOfertaComMatriculados$Disciplinas[i] = paste(...s, collapse = "/")
+  dfOfertaComMatriculados$CodUnico[i] = CodUnico
+  
+}
+order(dfOfertaComMatriculados$Turno, dfOfertaComMatriculados$CodUnico) -> ord
+dfOfertaComMatriculados[ord, ] %>% write.xlsx("/Users/jfrega/Downloads/lixo.xlsx", overwrite = TRUE)
+system("open /Users/jfrega/Downloads/lixo.xlsx")
+sqldf("select Turno, Codunico, CodDisciplinas, Disciplinas, LENGTH(CodDisciplinas) as nchar from dfOfertaComMatriculados group by 1, 2 having nchar = max(nchar) order by 1, 2, nchar desc") -> dfCodigosAgrupados
+colnames(dfOfertaComMatriculados) %>% paste('\ta.`', ., '`', sep = "", collapse = ", \n") %>% cat
+```
+
+```{r calculaConsolidado}
+"
+select 
+  a.Turno, 
+	a.CodUnico,
+	sum(a.`Demanda.Reprimida`) as `Demanda.Reprimida`, 
+	sum(a.`Demanda.Próximo.Semestre`) as `Demanda.Próximo.Semestre`, 
+	sum(a.`Demanda.Total`) as `Demanda.Total`, 
+	sum(a.`Matriculados`) as `Matriculados`, 
+	sum(a.`Entrantes`) as `Entrantes` 
+from 
+  dfOfertaComMatriculados a
+group by
+  a.Turno,
+  a.CodUnico
+
+" %>% sqldf -> dfResultadoAgrupado
+#"select * from dfOfertaComMatriculados where CodUnico = 2" %>% sqldf 
+
+"select a.Turno, 
+	a.CodUnico,
+	b.CodDisciplinas, b.Disciplinas, 
+	a.`Demanda.Reprimida`, 
+	a.`Demanda.Próximo.Semestre`, 
+	a.`Demanda.Total`, 
+	a.`Matriculados`, 
+	a.`Entrantes`, 
+	IFNULL(a.`Demanda.Reprimida`, 0) +
+	IFNULL(a.`Demanda.Próximo.Semestre`, 0) - 
+	IFNULL(ROUND(0.8*a.`Matriculados`,0), 0) +
+	IFNULL(a.`Entrantes`, 0) as `Total`
+
+from 
+  dfResultadoAgrupado a, 
+  dfCodigosAgrupados b
+where 
+  a.Turno = b.Turno and 
+  a.CodUnico = b.CodUnico
+order by
+  a.Turno asc, Total desc, b.CodDisciplinas" %>% sqldf -> dfConsolidado
+```
+
+```{r escreveXLSXConsolidado}
+fname = "/Users/jfrega/Downloads/2025-2-Necessidade-Oferta-Disciplinas-Consolidado.xlsx"
+createWorkbook() -> wb
+Styling_object_Red <- createStyle(fontColour = "black", fgFill = "#FFC0C0")
+Styling_object_Green <- createStyle(fontColour = "black", fgFill = "#C0FFC0")
+Styling_object_Yellow <- createStyle(fontColour = "black", fgFill = "#FFFFC0")
+openxlsx::addWorksheet(wb, "Matutino")
+openxlsx::setColWidths(wb, "Matutino", widths = "auto", cols = 1:ncol(dfConsolidado))
+openxlsx::addWorksheet(wb, "Noturno")
+openxlsx::setColWidths(wb, "Noturno", widths = "auto", cols = 1:ncol(dfConsolidado))
+openxlsx::writeData(wb, "Matutino", dfConsolidado[dfConsolidado$Turno=="Matutino", ])
+
+w = which(dfConsolidado$Turno=="Matutino")
+dfMat = dfConsolidado[w,]
+addStyle(wb, "Matutino", Styling_object_Red, which(dfMat$Total>=120)+1, cols = 1:ncol(dfConsolidado), gridExpand = TRUE)
+addStyle(wb, "Matutino", Styling_object_Green, which(dfMat$Total<=60)+1, cols = 1:ncol(dfConsolidado), gridExpand = TRUE)
+addStyle(wb, "Matutino", Styling_object_Yellow, which(dfMat$Total>60 & dfMat$Total<120 )+1, cols = 1:ncol(dfConsolidado), gridExpand = TRUE)
+
+openxlsx::writeData(wb, "Noturno", dfConsolidado[dfConsolidado$Turno=="Noturno", ])
+w = which(dfConsolidado$Turno=="Noturno")
+dfMat = dfConsolidado[w,]
+addStyle(wb, "Noturno", Styling_object_Red, which(dfMat$Total>=120)+1, cols = 1:ncol(dfConsolidado), gridExpand = TRUE)
+addStyle(wb, "Noturno", Styling_object_Green, which(dfMat$Total<=60)+1, cols = 1:ncol(dfConsolidado), gridExpand = TRUE)
+addStyle(wb, "Noturno", Styling_object_Yellow, which(dfMat$Total>60 & dfMat$Total<120 )+1, cols = 1:ncol(dfConsolidado), gridExpand = TRUE)
+
+nr = nrow(dfConsolidado[dfConsolidado$Turno=="Matutino", ])
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(E2:E", nr+1, ")"), startRow = nr+3, startCol = 5)
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(F2:F", nr+1, ")"), startRow = nr+3, startCol = 6)
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(G2:G", nr+1, ")"), startRow = nr+3, startCol = 7)
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(H2:H", nr+1, ")"), startRow = nr+3, startCol = 8)
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(I2:I", nr+1, ")"), startRow = nr+3, startCol = 9)
+openxlsx::writeFormula(wb, "Matutino", paste0("=SUM(J2:J", nr+1, ")"), startRow = nr+3, startCol = 10)
+
+nr = nrow(dfConsolidado[dfConsolidado$Turno=="Noturno", ])
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(E2:E", nr+1, ")"), startRow = nr+3, startCol = 5)
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(F2:F", nr+1, ")"), startRow = nr+3, startCol = 6)
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(G2:G", nr+1, ")"), startRow = nr+3, startCol = 7)
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(H2:H", nr+1, ")"), startRow = nr+3, startCol = 8)
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(I2:I", nr+1, ")"), startRow = nr+3, startCol = 9)
+openxlsx::writeFormula(wb, "Noturno", paste0("=SUM(J2:J", nr+1, ")"), startRow = nr+3, startCol = 10)
+
+openxlsx::createComment("Demanda considerando alunos com atraso na periodização", visible = FALSE) %>% openxlsx::writeComment(wb, "Noturno", 5, 1, .)
+openxlsx::createComment("Demanda considerando alunos que estarão no semestre correto na próxima oferta", visible = FALSE) %>% openxlsx::writeComment(wb, "Noturno", 6, 1, .)
+openxlsx::createComment("Alunos presentemente matriculados", visible = FALSE) %>% openxlsx::writeComment(wb, "Noturno", 8, 1, .)
+openxlsx::createComment("Necessidade de vagas considerando 80% de aprovação nas disciplinas atuais: Necessidade = Atrasados+Periodizados-0,80*Matriculados+Entrantes", visible = FALSE) %>% openxlsx::writeComment(wb, "Noturno", 10, 1, .)
+
+openxlsx::createComment("Demanda considerando alunos com atraso na periodização", visible = FALSE, height = 10) %>% openxlsx::writeComment(wb, "Matutino", 5, 1, .)
+openxlsx::createComment("Demanda considerando alunos que estarão no semestre correto na próxima oferta", visible = FALSE) %>% openxlsx::writeComment(wb, "Matutino", 6, 1, .)
+openxlsx::createComment("Alunos presentemente matriculados", visible = FALSE) %>% openxlsx::writeComment(wb, "Matutino", 8, 1, .)
+openxlsx::createComment("Necessidade de vagas considerando 80% de aprovação nas disciplinas atuais: Necessidade = Atrasados+Periodizados-0,80*Matriculados+Entrantes", visible = FALSE, height = 10) %>% openxlsx::writeComment(wb, "Matutino", 10, 1, .)
+
+saveWorkbook(wb, fname, overwrite = TRUE)
+system(paste0("open ", fname))
+```
+
+```{r propostagrade2024.2}
+"* M 1
+2 HSS101 HC250
+3 SAOB23 SA050
+4 SAOB18 SA049
+5 SAOB26 SA096 ou SA111
+6 SAOB21 SA097
+* N 1
+2 SAOB18 SA049
+2 SAOB21 SA097
+3 HSS101 HC250
+4 SAOB21 SA097
+5 SAOB26 SA096 ou SA111
+6 SAOB23 SA050
+* M 2
+2 SAOB10 CE003
+3 SAOB28 CM300
+4 SAOB08 SA106 e SA060
+5 SAOB15 SA100
+6 SAOB02 SA055
+6 SAOP51 SA062
+* N 2
+2 SAOB08 SA106 e SA060
+3 SAOB10 CE003
+4 SAOB28 CM300
+4 SAOB08 SA106 e SA060
+5 SAOB15 SA100
+6 SAOB02 SA055
+* MN 2
+7 SAOP27
+7 SAOP37EAD SA113
+7 SAOP17EAD SA051
+7 SAOP07EAD 
+* M 3
+2 SC213 SC205
+3 SAOB25 SA056
+4 SAOB17 SA092
+5 SAOB29 SA099
+6 SAOB04
+* N 3
+2 SC213 SC205
+3 SAOB25 SA056
+4 SAOB17 SA092
+5 SAOB29 SA099
+6 SAOB04
+6 SAOB17 SA092
+* MN 3
+6 SA056
+* M 4
+2 SAOB12 SA059
+3 SAOB27
+4 SAOB13 SA057
+5 SAOB09 SA048
+6 SAOB07
+* N 4
+2 SAOB12 SA059
+3 SAOB27
+4 SAOB13 SA057
+5 SAOB09 SA048
+6 SAOB07
+* M 5
+2 SAOB01 SA072 ou SA109
+3 SAOB19 SA064
+4 SAOB06 SA071
+5 SAOB20 SA070
+6 SAOB24 SA098 ou SA108
+* N 5
+2 SAOB06 SA071
+3 SAOB24 SA098 ou SA108
+4 SAOB01 SA072 ou SA109
+4 SA065
+5 SAOB20
+6 SAOB19 SA064
+* M 6
+2 SAOB16 SA072 ou SA109
+2 SA109
+3 SAOB03 SA074 ou SA074EAD
+4 SAOB05 SA076
+4 SAOB06 SA071
+5 SAOB11 SA068
+5 HP228
+6 SAOB14 SA073
+* N 6
+2 SAOB16 SA072 ou SA109
+2 SA109
+2 HP228
+3 SAOB03 SA074 ou SA074EAD
+4 SAOB05 SA076
+5 SAOB14 SA073
+6 SAOB11 SA068
+* MN 6
+5 SAOP05 HP228
+* M 7
+2 SA110
+3 SA075
+5 SA074EAD
+6 SA073
+* N 7
+2 SA110
+3 SA075
+5 SA073
+6 SA074EAD
+* M 8
+2 SA082
+3 SA080
+5 SA079
+6 SA101
+* N 8
+2 SA081
+3 SA080
+4 SAOP42 SA079
+5 SAOP49 SA078
+5 SA082
+6 SA078
+* FIM" -> a
+stringi::stri_replace_all(a, "-ou-", fixed = " ou ") -> a
+stringi::stri_replace_all(a, "-e-", fixed = " e ") -> a
+strsplit(a, "\n") %>% unlist -> b
+(substring(b, 1, 1)=="*") %>% which -> blocos
+
+analisa = function(bloco){
+  tokens = strsplit(bloco[1], " ") %>% unlist
+  turno = tokens[2]
+  periodo = tokens[3]
+  bloco = bloco[-1]
+  df = NULL
+  for(i in 1:length(bloco)) {
+    tokens = strsplit(bloco[i], " ") %>% unlist
+    dia = tokens[1]
+    codigo = tokens[2]
+    adapta = tokens[3]
+    df = rbind(df, data.frame(turno = turno, periodo = periodo, dia = dia, codigo = codigo, adapta = adapta))
+  }
+  df
+}
+df = NULL
+for(i in 1:(length(blocos)-1)) {
+  bloco = b[blocos[i]:(blocos[i+1]-1)]
+  print(bloco)
+  rbind(df, analisa(bloco)) -> df
+}
+peganome = function(cod) {
+  sqldf(paste0(
+    "select Disciplina, Natureza, Período from dfPPC where `Código.da.disciplina`='", cod, "'"
+  )) -> df
+  df[1,]
+}
+ddf = NULL
+for (i in 1:nrow(df)) {
+  ddf = rbind(ddf, peganome(df[i, "codigo"]))
+}
+cbind(df, ddf) -> ddf
+ddf$adapta1 = NA
+ddf$nomeadapta = NA
+ddf$opera = NA
+pegaadapta = function(adapta) {
+  if(!is.na(adapta)) {
+    if(nchar(adapta)<=5) {
+      sqldf(paste0(
+    "select Disciplina from dfPPC where `Código.da.disciplina`='", adapta, "'"
+  )) -> df
+      return(df[1,1])
+    } else {
+      print(adapta)
+      if(!is.na(stringi::stri_locate(adapta, fixed = "-e-")[,1])) {
+        ddf$adapta1[i] <<- ddf$adapta[i]
+        ddf$opera[i] <<- "E"
+        strsplit(adapta, split = "-e-", fixed = TRUE) %>% unlist -> adaptas
+        sqldf(paste0(
+    "select Disciplina from dfPPC where `Código.da.disciplina`='", adaptas[1], "'"
+  )) -> df
+        nome <- df[1,1]
+        sqldf(paste0(
+    "select Disciplina from dfPPC where `Código.da.disciplina`='", adaptas[2], "'"
+  )) -> df
+        ddf$adapta[i] <<- adaptas[1]
+        ddf$adapta1[i] <<- adaptas[2]
+        return(paste0(nome, " **(E)** ", df[1,1]))
+      } else {
+        ddf$adapta1[i] <<- ddf$adapta[i]
+        ddf$opera[i] <<- "OU"
+        strsplit(adapta, split = "-ou-", fixed = TRUE) %>% unlist -> adaptas
+        sqldf(paste0(
+    "select Disciplina from dfPPC where `Código.da.disciplina`='", adaptas[1], "'"
+  )) -> df
+        nome <- df[1,1]
+        sqldf(paste0(
+    "select Disciplina from dfPPC where `Código.da.disciplina`='", adaptas[2], "'"
+  )) -> df
+        ddf$adapta[i] <<- adaptas[1]
+        ddf$adapta1[i] <<- adaptas[2]
+        return(paste0(nome, " **(OU)** ", df[1,1]))
+      }
+    }
+  }
+  return(NA)
+}
+for(i in 1:nrow(ddf)) {
+  ddf$nomeadapta[i] = pegaadapta(ddf$adapta[i])
+}
+#colnames(ddf)
+cols = c(1, 2, 7, 3, 4, 6, 5, 9, 10, 11)
+View(ddf[,cols])
+"select turno, periodo, dia, count(*) from ddf where Natureza = 'Obrigatória' group by 1, 2, 3 having count(*) > 1" %>% sqldf
+```
+
+
+```{r escreveGradeEXCEL}
+write.xlsx(ddf[,cols], "/Users/jfrega/Downloads/PropostaGrade20251.xlsx")
+```
+
+
+
+<main id="maintables"></main>
+
+# Tabelas de demanda
+
+```{r mostraResultados, results='asis'}
+dfOfertaComMatriculados[dfOfertaComMatriculados$Turno=="Noturno", ] %>% mkable(caption = "Demanda Noturno")
+dfOfertaComMatriculados[dfOfertaComMatriculados$Turno=="Matutino", ] %>% mkable(caption = "Demanda Matutino")
+```
+
+
+
+```{r, eval=FALSE}
+"select Turno, `Disciplina(s)`, count(*) from dfCargaId where `CHObrigatóriaNãoVencida` <= 240 group by 1, 2 order by 3 desc, 1" %>% sqldf -> dfEmergencial
+peganomes = function(cod) {
+  cod %>% strsplit(" OU ", fixed = TRUE) %>% unlist -> cod
+  nomes = NULL
+  for(i in 1:length(cod)) {
+    nomes = c(nomes, peganome(cod[i])[1,1])
+  }
+  paste(nomes, collapse = " / ")
+}
+dfEmergencial$Nomes = NA
+for(i in 1:nrow(dfEmergencial)) dfEmergencial$Nomes[i] = peganomes(dfEmergencial$`Disciplina(s)`[i])
+```
+
+```{r mostraAlunosPorDisciplina, results='asis'}
+"/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/alunos por turma-2024-10-25T16_57_31.xlsx" %>% read.xlsx() -> dfAlunosPorTurma
+"select * from dfAlunosPorTurma where Status = 'Matriculado'" %>% sqldf -> dfAlunosPorTurma
+getDemanda = function(Turno, Disciplina) {
+  paste0("select * from dfCargaId where `Disciplina(s)` = '", Disciplina, "' and Turno = '", Turno, "' order by Nome") %>% sqldf
+}
+
+#w = (dfAlunosPorTurma$Nome=="BEATRIZ ARMSTRONG DUENHAS") %>% which
+#dfAlunosPorTurma[w,]
+getMatriculados = function(Turno, Disciplina) {
+  Turno = ifelse(Turno=="Noturno", "60A", "61A")
+  paste0("select * from dfAlunosPorTurma where `Código` = '", Disciplina, "' and `Código.Curriculo.Aluno` = '", Turno, "' order by Nome") %>% sqldf
+}
+
+.cod = "Noturno SAOB10"
+cat("\n<main id='", .cod, "'></main><a href='#maintables' class='skip-link'>Tabelas de demanda por turma</a> \n\n# ", .cod, "\n\n", sep = "")
+getDemanda('Noturno', 'SAOB10') %>% mkable(caption = "A integralizar")
+getMatriculados('Noturno', 'SAOB10') %>% mkable(caption = "Matriculados")
+```
+
+
+
+Levar a grade 2025/1 para o DAGA e para as áreas. 
+
+Oferecer turmas de férias nas disciplinas com mais de 150 alunos de demanda. (por período)
+
+Conversar com o Diego sobre estatística.
+
+Oferecer duas turmas, no mesmo dia das disciplinas com alta reprovação, exceto Matemática Financeira.
+
+Frega já tem a primeira versão da grade 25/1
+
+
+```{r}
+"SAOB13 SAOB19 SAOB08 SA049 SA072" %>% strsplit(" ") %>% unlist %>% paste("'", ., "'", collapse = ", ", sep = "") %>% paste0("(", ., ")")
+
+"select `Turno`, `Disciplina(s)`, count(*) from dfIntegralizacao where vencida = 'Não' and `Disciplina(s)` in ('SAOB13', 'SAOB19', 'SAOB08', 'SA049', 'SA072 OU SA109') and `Situação.do.aluno` = 'Registro ativo' and `Período`<= (`Período.do.aluno`) group by 1, 2 order by 2, 1" %>% sqldf
+
+"select distinct `Disciplina(s)` from dfIntegralizacao where length(`Disciplina(s)`)> 6 order by 1" %>% sqldf
+```
+
+```{r}
+#read.xlsx("/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/histórico escolar-2024-10-18T08_29_27.xlsx") -> dfHistorico
+#dfHistorico
+
+cod = '("SA106", "SA060", "SAOB08")'
+
+paste0('
+select 
+  Matrícula, Nome, Código, Disciplina, Status 
+from
+  dfHistorico b 
+where 
+  b.`Código` in ', cod, ' and 
+  b.Status <> "Aprovado" and 
+  b.Matrícula in (
+    select 
+      a.Matrícula 
+    from 
+      dfHistorico a 
+    where 
+      a.`Código` in ', cod, ' and 
+      `Situação.Discente` = "Registro ativo" and 
+      a.Status in ("Aprovado") and
+      a.Matrícula = b.Matrícula
+    group by 
+      1 
+    having 
+      count(*) < 2)
+') %>% sqldf
+
+#"select * from dfHistorico where Matrícula = 'GRR20203651'" %>% sqldf
+```
+
+
+```{r}
+'select * from dfIntegralizacao where Nome like "JÚLIA Th%"' %>% sqldf
+```
+
+```{r}
+read.xlsx("/Users/jfrega/Downloads/JULIA THOME histórico escolar-2024-12-10T18_00_37.xlsx")-> mdf
+"select * from mdf where not Status in ('Cancelado', 'Matriculado')" %>% sqldf -> mdf
+mdf$Nota %>% plot.ts
+```
+
+
+```{r}
+dirname = "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/"
+fintegralizacao = paste0(dirname, "integralização-2024-12-17T12_49_25.xlsx")
+fhistorico = paste0(dirname, "histórico escolar-2024-12-17T11_28_48.xlsx")
+fdiscentes = paste0(dirname, "discentes-2024-12-13T13_56_33.xlsx")
+read.xlsx(fdiscentes) -> dfDiscentes
+read.xlsx(fintegralizacao) -> dfIntegralizacao
+read.xlsx(fhistorico) -> dfHistorico
+
+dfDiscentes[which(dfDiscentes$Ano.Versão.Currículo==2023),] -> dfDiscentesC2023
+dfDiscentes[which(dfDiscentes$Ano.Versão.Currículo==2007),] -> dfDiscentesC2007
+
+# Busca quem foi aprovado em SAOB01 ou SAOB16 e não integralizou SA072 ou SA109 que é do currículo 2007
+
+'select * from dfIntegralizacao a where 
+a.Disciplina in ("SAOB01", "SAOB16") and 
+a.Matrícula in (select Matrícula from dfDiscentesC2023 b where b.GRR = a.Matrícula) and
+a.Matrícula not in (select Matrícula from dfIntegralizacao c where c.Disciplina in ("SA072", "SA109") and c.vencida = "Sim") and
+1 = (select count(*) from dfIntegralizacao d where d.Disciplina in ("SAOB01", "SAOB16") and d.Matrícula = a.Matrícula and d.vencida = "Sim" group by d.Matrícula)
+order by Currículo, Disciplina, Nome
+' %>% sqldf
+
+f = function(doiscod, dfcurriculo, umcod, status, tipo = 1) {
+  if(tipo == 1) {
+  paste0('
+         select b.`Código.currículo.(SIE)`, b.Nome, b.Matrícula, b.Código, b.Disciplina 
+         from dfHistorico b 
+         where b.Código in ', doiscod, ' and b.Status = "Aprovado" and b.Matrícula in (
+          select dfHistorico.Matrícula 
+          from dfHistorico, ', dfcurriculo, ' a 
+          where dfHistorico.Matrícula = a.GRR and 
+          dfHistorico.Status = "Aprovado" and 
+          dfHistorico.Código in ', doiscod, ' group by 1 having count(*) < 2) and 
+        b.Matrícula not in (
+          select c. Matrícula 
+          from dfIntegralizacao c 
+          where c.Disciplina in ', umcod, ' and 
+          c.vencida ', status, ' "Sim" and 
+          b.Matrícula = c.Matrícula) 
+          order by 1, 4, 2') %>% sqldf %>% return
+  } 
+  paste0('
+         select b.Nome, b.Matrícula, b.Código 
+         from dfHistorico b 
+         where b.Código in ', doiscod, ' and 
+         b.Status = "Aprovado" and 
+         b.Matrícula in (
+          select dfHistorico.Matrícula 
+          from dfHistorico, ', dfcurriculo, ' a 
+          where dfHistorico.Matrícula = a.GRR and 
+          dfHistorico.Status = "Aprovado" and 
+          dfHistorico.Código in ', doiscod, ' 
+          group by 1 having count(*) < 2) and 
+        b.Matrícula not in (
+          select Matrícula 
+          from dfHistorico c
+          where c.Código in ', umcod, ' and 
+          c.Status ', status, ' "Aprovado" and 
+          b.Matrícula = c.Matrícula)'
+        ) %>% sqldf
+}
+
+wb = createWorkbook()
+
+nm = "SA060+SA106=SAOB08"; ws = addWorksheet(wb, nm)
+f(doiscod = '("SA060", "SA106")', dfcurriculo = "dfDiscentesC2023", umcod = '("SAOB08")', status = '=') %>% writeData(wb, nm, .)
+
+nm = "SA057+SA063=SAOB13"; ws = addWorksheet(wb, nm)
+f(doiscod = '("SA057", "SA063")', dfcurriculo = "dfDiscentesC2023", umcod = '("SAOB13")', status = '=') %>% writeData(wb, nm, .)
+
+nm = "SA064+SA069=SAOB19"; ws = addWorksheet(wb, nm)
+f(doiscod = '("SA064", "SA069")', dfcurriculo = "dfDiscentesC2023", umcod = '("SAOB19")', status = '=') %>% writeData(wb, nm, .)
+
+nm = "SAOB04+SAOB27=SA053"; ws = addWorksheet(wb, nm)
+f(doiscod = '("SAOB04", "SAOB27")', dfcurriculo = "dfDiscentesC2007", umcod = '("SA053")', status = '<>') %>% writeData(wb, nm, .)
+
+nm = "SAOB18+SAOB22=SA049"; ws = addWorksheet(wb, nm)
+f(doiscod = '("SAOB18", "SAOB22")', dfcurriculo = "dfDiscentesC2007", umcod = '("SA049")', status = '<>') %>% writeData(wb, nm, .)
+
+nm = "SAOB01+SAOB16=SA072|SA109"; ws = addWorksheet(wb, nm)
+f(doiscod = '("SAOB01", "SAOB16")', dfcurriculo = "dfDiscentesC2007", umcod = '("SA072", "SA109", "SA072 OU SA109")', status = '<>') %>% writeData(wb, nm, .)
+
+for (sheet in 1:6) {
+  openxlsx::setColWidths(wb, sheet, cols = 1:10, widths = "auto")
+}
+
+saveWorkbook(wb, "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/teste1.xlsx", overwrite = TRUE)
+
+system("open /Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/teste1.xlsx")
+
+dfHistorico[(dfHistorico$Matrícula=="GRR20211432") & (dfHistorico$Código %in% c("SA072", "SA109")),]
+
+dfIntegralizacao[dfIntegralizacao$Matrícula=="GRR20224327" & (dfIntegralizacao$Disciplina %in% c("SA072", "SA109")),]
+dfIntegralizacao[dfIntegralizacao$Matrícula=="GRR20211432",]
+
+"select Matrícula, Nome from dfIntegralizacao where dfIntegralizacao.`Disciplina` in ('SAOB18', 'SAOB22') and vencida = 'Sim' group by 1, 2 having count(*) <2" %>% sqldf
+
+unique(dfHistorico$`Código.currículo.(SIE)`)
+
+```
+
+```{r}
+'select * from dfIntegralizacao where dfIntegralizacao.Matrícula = "GRR20224327" and Disciplina in ("SAOB01", "SAOB16", "SA072", "SA109")' %>% sqldf
+
+```
+
+```{r}
+f = function(falta, venceu, curriculo) {
+  paste0('select * from dfIntegralizacao a where 
+a.Disciplina in ', falta, ' and 
+a.Matrícula in (select Matrícula from dfDiscentesC', curriculo, ' b where b.GRR = a.Matrícula) and
+a.Matrícula not in (select Matrícula from dfIntegralizacao c where c.Disciplina in ', venceu, ' and c.vencida = "Sim") and
+2 >= (select count(*) from dfIntegralizacao d where d.Disciplina in ', falta, ' and d.Matrícula = a.Matrícula and d.vencida = "Sim" group by d.Matrícula)
+order by Currículo, Disciplina, Nome
+') %>% sqldf
+}
+
+writedata = function(df, tipo = 1) {
+  if(tipo==1) {
+    print(df)
+  } else {
+    writeData(wb, nm, df)
+  }
+}
+
+wb = createWorkbook()
+
+nm = "SA060+SA106=SAOB08"; ws = addWorksheet(wb, nm)
+f('("SA106", "SA060")', '("SAOB08")', '2023') %>% writedata
+
+nm = "SA057+SA063=SAOB13"; ws = addWorksheet(wb, nm)
+f('("SA057", "SA063")', '("SAOB13")', '2023') %>% writedata()
+
+nm = "SA064+SA069=SAOB19"; ws = addWorksheet(wb, nm)
+f('("SA064", "SA069")', '("SAOB19")', '2023') %>% writedata()
+
+nm = "SAOB04+SAOB27=SA053"; ws = addWorksheet(wb, nm)
+f('("SAOB04", "SAOB27")', '("SA053")', 2007) %>% writedata()
+
+nm = "SAOB18+SAOB22=SA049"; ws = addWorksheet(wb, nm)
+f('("SAOB18", "SAOB22")', '("SA049")', '2007') %>% writedata()
+
+nm = "SAOB01+SAOB16=SA072|SA109"; ws = addWorksheet(wb, nm)
+f('("SAOB01", "SAOB16")', '("SA072", "SA109")', '2007') %>% writedata()
+
+for (sheet in 1:6) {
+  openxlsx::setColWidths(wb, sheet, cols = 1:10, widths = "auto")
+}
+
+saveWorkbook(wb, "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/buscaCargasVencidasParcialmente.xlsx", overwrite = TRUE)
+
+system("open /Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/buscaCargasVencidasParcialmente.xlsx")
+```
+
+```{r}
+# Busca quem foi aprovado em SAOB01 ou SAOB16 e não integralizou SA072 ou SA109 que é do currículo 2007
+
+'select * from dfIntegralizacao a where 
+a.Disciplina in ("SAOB01", "SAOB16") and 
+a.Matrícula in (select Matrícula from dfDiscentesC2007 b where b.GRR = a.Matrícula) and
+a.Matrícula not in (select Matrícula from dfIntegralizacao c where c.Disciplina in ("SA072", "SA109") and c.vencida = "Sim") and
+1 = (select count(*) from dfIntegralizacao d where d.Disciplina in ("SAOB01", "SAOB16") and d.Matrícula = a.Matrícula and d.vencida = "Sim" group by d.Matrícula)
+order by Currículo, Disciplina, Nome
+' %>% sqldf %>% write.xlsx(file = "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/teste2.xlsx", overwrite = TRUE)
+```
+
+
+
+```{r}
+# Busca quem foi aprovado em SA106 ou SA060 e não venceu SAOB08 e é do currículo 2023
+
+'select * from dfIntegralizacao a where 
+a.Disciplina in ("SA106", "SA060") and 
+a.Matrícula in (select Matrícula from dfDiscentesC2023 b where b.GRR = a.Matrícula) and
+a.Matrícula not in (select Matrícula from dfIntegralizacao c where c.Disciplina in ("SAOB08") and c.vencida = "Sim") and
+1 = (select count(*) from dfIntegralizacao d where d.Disciplina in ("SA106", "SA060") and d.Matrícula = a.Matrícula and d.vencida = "Sim" group by d.Matrícula)
+order by Currículo, Disciplina, Nome
+' %>% sqldf %>% write.xlsx(file = "/Users/jfrega/Documents/GitHub/CCAD-2024-2026/Dados2024-2/teste3.xlsx", overwrite = TRUE)
+```
+
+
+

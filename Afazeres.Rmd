@@ -1,0 +1,65 @@
+---
+title: "Afazeres"
+author: "Prof. Frega"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+    number_sections: yes
+---
+<style>
+body {
+  margin-bottom: 8cm;
+}
+</style>
+
+# Ofertas de disciplinas
+
+## 2024-10-17
+
+### Ofertas exclusivas currículo antigo
+
+Marque em algum lugar esses detalhes que  pensamos hoje: Sa049, sa053 e sa072/sa109 vamos precisar ofertar só para os alunos do currículo antigo.
+
+É daquelas que validam 2 do currículo novo. E a SA092 Oficina de Informática que precisaremos ofertar também
+
+Ideias da Aline matricular manual no ajuste, mas avisar os alunos da grade antiga.
+
+Não deixar o Siga matricular
+
+## 2024-10-18
+
+### Demanda de matrículas
+
+Estimar demanda de matrículas por disciplina em 2025-1
+
+## 2024-10-22
+
+[22/10/2024, 20:38:40] Lemos, Iomara Scandelari,: Conte para ela sobre aqueles problemas das disciplinas faça 120h e ganhe 60h
+[22/10/2024, 20:39:09] José Roberto: Conversarei sim
+[22/10/2024, 20:39:13] Lemos, Iomara Scandelari,: É da adaptação que tinham feito para os pccs
+
+## 2024-10-23
+
+### Currículo antigo x novo
+
+[23/10/2024, 13:46:41] Lemos, Iomara Scandelari,: Precisaremos ofertar as disciplinas do currículo antigo... A SAOB19 está validando SA069+SA064... Os alunos tentaram cursar a antiga para ganhar 2 e logicamente não deu certo...
+
+[23/10/2024, 13:55:03] Lemos, Iomara Scandelari,: Temos pedidos dos antigos e dos novos para uma delas...
+
+[23/10/2024, 14:08:24] Lemos, Iomara Scandelari,: Vi que tem e-mail dos alunos no mesmo caso para as de Direito SAOB08 ou SA106 mais a SA060.
+
+[23/10/2024, 14:09:57] Lemos, Iomara Scandelari,: SAO57 estratégia de produção e SAO63 sistema de produção. 
+
+ SAOB13 gestão de produção: operações.
+
+[23/10/2024, 14:10:13] Lemos, Iomara Scandelari,: Logística, Direito e Produção estão com o mesmo problema
+
+[23/10/2024, 14:10:41] Lemos, Iomara Scandelari,: Alunos antigos que cursaram um só da grade antiga e alunos novos que tentaram se dar bem cursando uma delas
+
+Conversa com Madlaine disse que basta ofertar as do currículo novo. 
+
+### Problema com professor Lisandro do DECISO
+
+Acompanhar email enviado. 
+

@@ -1,0 +1,56 @@
+---
+title: "Matriculados"
+author: "Prof. Frega"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+options(knitr.kable.NA = '')
+library(openxlsx)
+library(sqldf)
+library(magrittr)
+library(knitr)
+library(kableExtra)
+```
+
+```{r, eval=FALSE}
+df = read.xlsx("/Users/jfrega/Downloads/turmas-2024-09-12T09_27_11.xlsx")
+df2 = read.xlsx("/Users/jfrega/Downloads/disciplinas-2024-09-12T11_00_18.xlsx")
+df2 = sqldf("select `Código.da.disciplina` as `Código`, `Período` from df2 where `Período` <> 0 group by 1, 2")
+nm = colnames(df) %>% paste("`", ., "`", sep = "", collapse = ", ")
+df$`Nome.turma`[which(df$Nome.turma=="NM")] = "MN"
+df$`Turno`[which(df$Nome.turma=="MN")] = "Ambos"
+df$`Nome.turma`[which(df$Nome.turma=="NM2")] = "MN2"
+df$`Turno`[which(df$Nome.turma=="MN2")] = "Ambos"
+df1 = sqldf("select `Código.disciplina`, `Nome.disciplina`, `Período`, `Nome.turma`, `Docente`, sum(`Matriculados`) as Matriculados, sum(`Total.alunos`) as `Total.alunos`, sum(`Total.de.vagas`) as `Total.de.Vagas`, `Turno`, sum(`Vagas.para.calouros`) as `Vagas.para.calouros`, sum(`Vagas.para.veteranos`) as `Vagas.para.veteranos`, count(*) as `turmas.agrupadas` from df full outer join df2 on df.`Código.disciplina`=df2.`Código` where `Turno` <> 'xxx' group by 1, 2, 3, 4, 5, 9")
+write.xlsx(df1, "/Users/jfrega/Downloads/turmas-2024-09-12T09_27_11_agrupados.xlsx", overwrite = TRUE)
+system(paste0("open ", "/Users/jfrega/Downloads/turmas-2024-09-12T09_27_11_agrupados.xlsx"))
+```
+
+# Obrigatórias
+
+```{r}
+.df = read.xlsx("/Users/jfrega/Downloads/CEPE1123.xlsx", sheet = 1)
+.df=.df[,-c(4, 5)]
+kable(.df) %>% kableExtra::kable_classic_2() %>% row_spec(seq(2, nrow(.df), 2), extra_css = "border-bottom: 1px solid;")
+```
+
+
+# Optativas
+
+```{r}
+.df = read.xlsx("/Users/jfrega/Downloads/CEPE1123.xlsx", sheet = 2)
+matriz = data.frame()
+for(i in 1:nrow(.df)) {
+  stringi::stri_replace_all(.df$Adaptações[i], replacement = "**", fixed = ") OU (") -> s
+  stringi::stri_replace_all(s, replacement = "**", fixed = ") E (") -> s
+  stringi::stri_replace_all(s, replacement = "", fixed = "(") -> s
+  stringi::stri_replace_all(s, replacement = "", fixed = ")") -> s
+  s = strsplit(s, split = "**", fixed = TRUE) %>% unlist
+  matriz = rbind(matriz, data.frame(`Código` = .df$`Código`[i], `Nome` = .df$`Nome`[i], `Adaptação` = s))
+}
+matriz %>% kable %>% kableExtra::kable_classic_2() %>% row_spec(seq(2, nrow(matriz), 2), extra_css = "border-bottom: 1px solid;")
+```
+

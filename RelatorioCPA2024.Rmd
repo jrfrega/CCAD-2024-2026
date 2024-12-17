@@ -1,0 +1,260 @@
+---
+title: "Untitled"
+author: "Prof. Frega"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, results = 'asis')
+library(magrittr)
+library(openxlsx)
+source('/Users/jfrega/Documents/R/GeraProvas/StdHeader.R')
+```
+
+
+```{r}
+read.xlsx("/Users/jfrega/Downloads/RelatorioCPA2024.xlsx", colNames = FALSE) -> df
+which(df$X2=="Concordo fortemente" | df$X2=="10") -> linhas
+estatisticas = NULL
+respondentes = NULL
+for(k in linhas) {
+df[k+(0:4), c(4, 6, 8)] -> estat
+apply(estat, 1, as.numeric) %>% t -> estat
+medianas = NULL
+for(kk in 1:3) {
+  tc = data.frame(LimInf = -0.5+5:1, LimSup = 0.5+5:1, Freq = estat[,kk])
+  tc = tc[5:1,]
+  medianas = c(medianas, percentilDadosAgrupados(tc, p = 0.50)$mediana %>% round(1))
+}
+cs = colSums(estat)
+respondentes = rbind(respondentes, cs)
+sapply(1:3, function(y) {sapply(1:5, function(x) estat[x,y]/cs[y]*(6-x)) %>% sum}) %>% round(1) -> notas
+notas = c(notas, medianas)
+paste0("\nMédias -> ", paste(c("Curso", "Setor", "UFPR"), ": ", notas[1:3], sep = "", collapse = "; "), " / Medianas -> ", paste(c("Curso", "Setor", "UFPR"), ": ", notas[4:6], sep = "", collapse = "; ")) -> s
+estatisticas = c(estatisticas, s)
+}
+cbind(respondentes, (respondentes[,1]/respondentes[,2]*100) %>% round(1), (respondentes[,1]/respondentes[,3]*100) %>% round(1)) -> respondentes
+colnames(respondentes) = c("nAlunosCurso", "nAlunosSetor", "nAlunosUFPR", "percSetor", "percUFPR")
+```
+
+
+```{r}
+"*RESPONSABILIDADE SOCIAL
+
+Percebo o impacto das ações e programas de acolhimento e acompanhamento de estudantes indígenas, quilombolas, migrantes, refugiados, surdos, com deficiência e/ou com transtornos globais de desenvolvimento.
+R: As respostas indicam um posicionamento abaixo da média do Setor e da UFPR, com prevalência de respostas no sentido do aprimoramento, o que aponta para a necessidade de um esforço nesse sentido. 
+30
+
+Em meu Campus/Setor, há separação de lixo, destinação correta de resíduos, tratamento de efluentes e outras ações de proteção ambiental.
+R: Posicionamento compatível com o Setor e a UFPR. Manutenção.
+38
+
+Noto que a comunidade interna faz uso eficiente de recursos (papel, água e energia elétrica).
+R: Posicionamento compatível com o Setor e um pouco abaixo da média da UFPR. Manutenção. 
+38
+
+É visível que a universidade promove ações de extensão universitária buscando articulação com a comunidade externa. 
+R: Posicionamento um pouco abaixo da média do Setor e da UFPR, mas com predominância da Manutenção.
+36
+
+Há ações e canais de acolhimento e acompanhamento em casos de preconceito e/ou discriminação, tais como: raça/cor, gênero, condição social, dificuldades de aprendizagem, transtornos ou problemas de saúde e locomoção, e outras formas de exclusão.
+R: Posicionamento compatível com o Setor e levemente abaixo da média da UFPR. Manutenção. 
+32
+
+
+*POLÍTICAS ACADÊMICAS
+
+Os componentes disciplinares apresentam interdisciplinaridade, articulando-se entre si.
+R: Posicionamento um pouco abaixo da média do Setor e da UFPR, mas indicando fortemente a Manutenção.
+32
+
+Os componentes curriculares possibilitam a articulação entre teoria e prática.
+R: Posicionamento abaixo da média do Setor e da UFPR, mas ainda indicando Manutenção com uma proporção significativa de Urgência nas respostas.
+33
+
+Os componentes disciplinares estão articulados de forma a permitir a formação plural do ponto de vista acadêmico, profissional e cidadão.
+R: Posicionamento compatível com o Setor e a UFPR. Manutenção.
+33
+
+A integração entre ensino, pesquisa e extensão é transparente e adequada às demandas de formação acadêmica, profissional e cidadã.
+R: Posicionamento um pouco abaixo da média do Setor e da UFPR, mas ainda indicando a Manutenção, com uma participação um tanto expressiva da necessidade de Aprimoramento. 
+30
+
+As normativas de estágio supervisionado são claras e atendem às demandas de formação profissional.
+R: Posicionamento um pouco abaixo da média do Setor e da UFPR, mas ainda indicando a Manutenção, com uma participação um tanto expressiva da necessidade de Urgência.
+26
+
+
+*COMUNICAÇÃO INTERNA E EXTERNA
+
+Considero suficiente e adequada a diversidade de canais de comunicação institucionais utilizados na UFPR para a comunicação interna.
+R: Manutenção
+31
+
+As informações divulgadas no Portal da UFPR são objetivas, claras e atualizadas, apresentando os aspectos institucionais e acadêmicos. 
+R: Manutenção
+30
+
+São nítidos o acompanhamento e o cuidado da imagem pública da instituição nos meios de comunicação.
+R: Manutenção
+30
+
+As informações divulgadas no Portal do Curso são objetivas, claras e atualizadas, apresentando grade de disciplinas, atividades formativas, estágio supervisionado, e outras informações necessários ao meu perfeito desempenho acadêmico.
+R: Manutenção. Neste quesito a média do Curso é expressivamente maior que as médias do Setor e da UFPR.
+31
+
+Observo transparência na comunicação institucional interna e externa sobre as rotinas operacionais e burocráticas (Resoluções dos Conselhos Superiores, Portarias e Normativas das Pró-reitorias, Setores e Campi Avançados).
+R: Nosso Curso apresenta média expressivamente inferior às médias do Setor e da UFPR, indicando fortemente a necessidade de Aprimoramento.
+27
+
+As ações de mobilidade internacional e nacional são divulgadas e adequadas aos objetivos de formação profissional, acadêmica e cidadã.
+R: Manutenção.
+29
+
+É perceptível o impacto positivo dos programas de acolhimento e assistência estudantil na vida dos estudantes da UFPR. 
+R: Posicionamento compatível com o Setor e levemente abaixo da média da UFPR. Manutenção. 
+22
+
+A comunicação e divulgação das informações relativas à assistência estudantil é eficiente.
+R: A média do Curso está posicionada um tanto abaixo das médias do Setor e da UFPR, com uma expressiva manifestação de Urgência. 
+26
+
+São suficientes e adequados os espaços físicos para acolhimento psicossocial e pedagógico.
+R: Há forte expressão de Urgência nesse quesito. 
+21
+
+
+*UNIDADES GESTORAS E CONSIDERAÇÕES ADICIONAIS
+
+Os propósitos de coordenação, fiscalização e execução do Setor ao qual meu curso está vinculado estão sendo cumpridos adequadamente, de forma a orientar e fornecer as condições necessárias para a aprendizagem, por meio da cooperação entre os cursos, favorecendo a interdisciplinaridade e a integração do ensino, pesquisa e extensão.
+R: Manutenção
+23
+
+A condução e gestão do meu Curso é adequada, com diretrizes que propiciam o cumprimento do projeto pedagógico, relevantes para a formação do estudante, e com ações concretas que entregam uma educação de nível superior de qualidade, além de acompanhar, orientar e auxiliar a vida acadêmica do estudante.
+R: Posicionamento compatível com o Setor a UFPR. Manutenção com leve expressão de Aprimoramento.
+22
+
+Percebo ações da Pró-reitoria de Assuntos Estudantis (PRAE) no desenvolvimento e acompanhamento de programas de apoio, com ações de assistência, humanização e integração que garantem a manutenção e sobrevivência do aluno e que contribuem efetivamente para a sua formação individual e global.
+R: Posicionamento compatível com o Setor a UFPR. Manutenção com leve expressão de Aprimoramento.
+21
+
+Percebo ações da Pró-Reitoria de Extensão e Cultura (PROEC) de orientação e elaboração das atividades de extensão e artísticos-culturais, bem como a sua divulgação científico cultural junto à comunidade interna e externa.
+R: A média do curso ficou bem abaixo das média do Setor e da UFPR, indicando fortemente a necessidade de Aprimoramento.
+20
+
+Percebo ações da Pró-Reitoria de Graduação e Educação Profissional (PROGRAD) no desenvolvimento de políticas institucionais de ensino  direcionadas ao processo de formação dos alunos e compromissadas com as demandas da sociedade e com a qualidade social da educação, bem como percebo atividades que garantem o ingresso, a permanência, o acompanhamento em estágio e a diplomação do aluno.
+R: A média do curso ficou algo abaixo das médias do Setor e da UFPR, indicando a necessidade de Aprimoramento.
+23
+
+As políticas de cooperação, mobilidade interuniversitária e internacionalização do ensino, da pesquisa e da extensão definidas pela Agência UFPR Internacional refletem em ações que atendem, promovem, articulam e facilitam a interação da Universidade com intercâmbios e programas internacionais, atuando como um órgão-meio perante a comunidade internacional.
+R: A média do curso ficou algo abaixo das médias do Setor e da UFPR, indicando a necessidade de Aprimoramento.
+22
+
+As ações da Ouvidoria Geral, entendida como um importante canal de comunicação, atendem adequadamente às manifestações da comunidade interna e externa relativas aos serviços públicos prestados pela universidade, e é efetiva nos encaminhamentos e no acompanhamento das demandas da comunidade.
+R: A média do curso ficou algo abaixo das médias do Setor e da UFPR, indicando a necessidade de Aprimoramento.
+19
+
+As ações da Superintendência de Inclusão, Políticas Afirmativas e Diversidade (SIPAD) apoiam adequadamente a comunidade da UFPR, no âmbito acadêmico, pedagógico e institucional, ao propor, fortalecer e concretizar políticas de promoção de igualdade e da defesa de Direitos Humanos, visando o desenvolvimento de práticas afirmativas, o reconhecimento da diferença e da diversidade e o atendimento aos direitos de pessoas com deficiência, altas habilidades/superdotação e Transtorno do Espectro Autista (TEA), surdas, negras, indígenas, quilombolas, de comunidades tradicionais, bem como povos do campo, mulheres, LGBTIs, migrantes, refugiados, solicitantes de refúgio ou portadores de acolhida humanitária, apátridas e outros grupos histórica e socialmente subalternizados.
+R: A média do curso ficou algo abaixo das médias do Setor e da UFPR, indicando a necessidade de Aprimoramento.
+20
+
+As ações e políticas do Sistema de Bibliotecas atendem adequadamente os propósitos de oferecer suporte às atividades de Ensino, Pesquisa e Extensão, por meio da disponibilização de recursos informacionais, produtos e serviços.
+R: Manutenção
+23
+
+" -> texto
+strsplit(texto, "\n") %>% unlist -> texto
+texto[which(nchar(texto)>0)] -> texto
+
+which(substring(texto, 1, 17)=="R: Posicionamento") -> w
+stringi::stri_replace(texto[w], "R: O posicionamento dos respondentes é", fixed = "R: Posicionamento") -> texto[w]
+BLOCO = NULL
+ASSERTIVA = NULL
+RESPOSTA = NULL
+NALUNOS = NULL
+bloco = NULL
+assertiva = NULL
+for(i in texto) {
+  if(substring(i, 1, 1)=="*") {
+    bloco = substring(i, 2, 100)
+    #print(bloco)
+  } else {
+    if(substring(i, 1, 3)=="R: ") {
+      RESPOSTA = c(RESPOSTA, substring(i, 4, 500))
+    } else {
+      if(!is.na(as.numeric(i))) {
+        NALUNOS = c(NALUNOS, as.numeric(i))
+      } else {
+        BLOCO = c(BLOCO, bloco)
+        ASSERTIVA = c(ASSERTIVA, i)
+      }
+    }
+  }
+}
+data.frame(bloco = BLOCO, assertiva = ASSERTIVA, resposta = RESPOSTA, nalunos = NALUNOS, estatisticas = estatisticas) -> ddf
+
+for(i in 1:nrow(ddf)) {
+  cat("\n\nNo bloco ", ddf$bloco[i], ", com respeito à ASSERTIVA '", ddf$assertiva[i], "', o questionário teve ", ddf$nalunos[i], " respondentes, correspondendo a ", respondentes[i, 4], "% do total de respondentes do Setor (", respondentes[i, 2], ") e a ", respondentes[i, 5], "% do total de respondentes da UFPR (", respondentes[i, 3], ")", sep = "", ", com as respostas indicando que '", ddf$resposta[i], "' (Notas: ", estatisticas[i], ")")
+}
+```
+
+
+Com relação ao relatório de avaliação das disciplinas, fica inviável a análise individual de todas as disciplinas devido ao baixo número de respondentes na maioria delas. Assim sendo, procede-se à análise agrupada do desempenho do Curso em relação ao Setor e à UFPR. 
+
+```{r}
+read.xlsx("/Users/jfrega/Downloads/RelatorioCPA2024.xlsx", sheet = "Planilha2", colNames = FALSE) -> ddf
+which(ddf$X2=="Concordo fortemente") -> linhas
+estatisticas = NULL
+respondentes = NULL
+cabecalhos = c(
+  "Resultados gerais das disciplinas", 
+  "Resultados agrupados das questões relativas à Abordagem e organização da disciplina", 
+  "Resultados agrupados das questões relativas à Atuação do Professor e do Monitor", 
+  "Resultados agrupados das questões relativas à Autoavaliação do estudante e considerações adicionais"
+)
+k = 0
+for(i in linhas) {
+  k = k + 1
+  ddf[i+0:4, c(6, 8, 10)] -> .df
+  apply(.df, 2, as.numeric) -> .df
+  .df[,3] = .df[,3]/20
+  apply(.df, 1, as.numeric) %>% t -> estat
+medianas = NULL
+for(kk in 1:3) {
+  tc = data.frame(LimInf = -0.5+5:1, LimSup = 0.5+5:1, Freq = estat[,kk])
+  tc = tc[5:1,]
+  medianas = c(medianas, percentilDadosAgrupados(tc, p = 0.50)$mediana %>% round(1))
+}
+cs = colSums(estat)
+respondentes = rbind(respondentes, cs)
+sapply(1:3, function(y) {sapply(1:5, function(x) estat[x,y]/cs[y]*(6-x)) %>% sum}) %>% round(1) -> notas
+notas = c(notas, medianas)
+paste0("\nMédias -> ", paste(c("Curso", "Setor", "UFPR"), ": ", notas[1:3], sep = "", collapse = "; "), " / Medianas -> ", paste(c("Curso", "Setor", "UFPR"), ": ", notas[4:6], sep = "", collapse = "; ")) -> s
+estatisticas = c(estatisticas, s)
+
+  
+  
+  chisq.test(.df) -> ct
+  #ct$p.value %>% print
+  #ct$observed %>% print
+  #ct$expected %>% print
+  ((ct$observed-ct$expected)/ct$expected) -> difer
+  ((ct$observed-ct$expected)^2/ct$expected) -> difer2
+  cat(paste0(k, ") Para o quesito '", cabecalhos[k], "' observa-se que\n\n "))
+  which(difer2>mean(difer2), arr.ind = TRUE) -> w
+  cols = c("Curso", "Setor", "UFPR")
+  lins = c("Concordo fortemente", "Concordo", "Indiferente/Neutro", "Discordo", "Discordo fortemente")
+  data.frame(cols[w[,2]], lins[w[,1]], sign(difer[w]), difer2[w]) -> df
+  apply(df, 1, function(x) {
+    paste0("* O ", x[1], " apresentou uma proporção significativamente ", ifelse(x[3]=="-1", "menor", "maior"), " do item '", x[2], "' no contexto Curso/Setor/UFPR. / ", estatisticas[k], "\n\n") 
+}) %>% cat(., "\n\n\n\n")
+  
+}
+
+```
+
+
+Observando-se a preponderância da ocorrência significativamente maior do item ‘Indiferente/Neutro’ para o Curso, pode-se conjecturar que talvez haja um viés de resposta ao centro praticado pelos respondentes. 

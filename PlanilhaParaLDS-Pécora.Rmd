@@ -1,0 +1,80 @@
+---
+title: "Relatório de Geração de Dados para LDS --- Pécora"
+author: "Prof. Frega"
+date: "`r library(magrittr); Sys.Date() %>% format('%d-%m-%Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+source('/Users/jfrega/Documents/R/GeraProvas/StdHeader.R')
+library(knitr)
+library(kableExtra)
+library(openxlsx)
+library(sqldf)
+```
+
+```{r}
+#file.choose()
+fname = "/Users/jfrega/Downloads/discentes-2024-09-13T11_34_40.xlsx"
+discentes = read.xlsx(fname)
+fname = "/Users/jfrega/Downloads/integralização-2024-09-13T11_32_33.xlsx"
+integralizacao = read.xlsx(fname)
+fname = "/Users/jfrega/Downloads/histórico escolar-2024-09-19T13_32_51.xlsx"
+historico = read.xlsx(fname)
+#paste("discentes.`", colnames(discentes), "`", sep = "", collapse = ", ")
+```
+
+# Discentes que não possuem histórico
+
+```{r}
+sqldf("select * from discentes where `Nome.Social` in (select `Nome.Social` from discentes where not `Nome.Social` in (select distinct(Nome) from historico))") %>% kable %>% kableExtra::kable_classic()
+```
+
+
+# Históricos sem registro de discentes
+
+```{r}
+sqldf("select distinct(`Nome`) from historico where not `Nome` in (select distinct(`Nome.social`) from discentes)") %>% kable %>% kableExtra::kable_classic()
+```
+
+# Discentes que não possuem integralização
+
+```{r}
+sqldf("select * from discentes where `Nome.Social` in (select `Nome.Social` from discentes where not `Nome.Social` in (select distinct(Nome) from integralizacao))") %>% kable %>% kableExtra::kable_classic()
+```
+
+# Integralização sem registro de discentes
+
+```{r}
+sqldf("select distinct(`Nome`) from integralizacao where not `Nome` in (select distinct(`Nome.social`) from discentes)") %>% kable %>% kableExtra::kable_classic()
+```
+
+```{r}
+discentes$ID = 1:nrow(discentes) %>% pad0(6) 
+dePara = data.frame(ID = discentes$ID, GRR = discentes$GRR, Nome = discentes$`Nome.Social`)
+integralizacao = sqldf("select ID, integralizacao.`Disciplina(s)`, integralizacao.`Período`, integralizacao.`Natureza`, integralizacao.`CH`, integralizacao.`vencida`, integralizacao.`Disciplina`, integralizacao.`Vencida.em`, integralizacao.`Observação`, integralizacao.`Matriculada`, integralizacao.`Situação.ENADE` from discentes, integralizacao where discentes.GRR = integralizacao.Matrícula")
+historico = sqldf("select ID, historico.`Código`, historico.`Disciplina`, historico.`Período`, historico.`Ano`, historico.`Currículo.Atual`, historico.`CH`, historico.`Nota`, historico.`Frequência`, historico.`Status`, historico.`Tipo`, historico.`Observação`, historico.`Natureza`, historico.`Situação.Discente`, historico.`Nome.da.Turma`, historico.`Data.Atualização`, historico.`Docente` from discentes, historico where discentes.GRR = historico.Matrícula")
+discentes = sqldf("select ID, discentes.`Curso`, discentes.`Situação`, discentes.`Enade`, discentes.`Provável.Formando`from discentes")
+```
+
+```{r, eval=FALSE}
+wb = createWorkbook()
+ws = addWorksheet(wb, "dePara")
+openxlsx::writeData(wb, sheet = "dePara", x = dePara)
+ws = addWorksheet(wb, "Discentes")
+openxlsx::writeData(wb, sheet = "Discentes", x = discentes)
+ws = addWorksheet(wb, "Integralização")
+openxlsx::writeData(wb, sheet = "Integralização", x = integralizacao)
+ws = addWorksheet(wb, "Histórico")
+openxlsx::writeData(wb, sheet = "Histórico", x = historico)
+fname = paste0("/Users/jfrega/Downloads/DadosAnonimizados-", Sys.Date() %>% format("%Y%d%m"), Sys.time() %>% format("-%H%M%S"), ".xlsx")
+saveWorkbook(wb, fname)
+system(paste0("open ", fname))
+```
+
+
+Boa tarde a todos! Segue uma pergunta de um vice-coordenador novato: nosso curso de ADM tem dois turnos, cada qual com 4 anos de duração e com 110 ingressantes por ano, o que totaliza uma operação de 2 x 4 x 110 = 880 alunos. 
+
+Hoje tenho 949 alunos matriculados, considerando os periodizados e os desperiodizados. Isso não caracteriza a inexistência de vagas ociosas?
+
